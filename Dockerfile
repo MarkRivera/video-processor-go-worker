@@ -1,5 +1,10 @@
 FROM golang:1.20.5
 
+RUN apt-get update && apt-get install -y curl
+
+RUN apt-get update && \
+    apt-get install -y ffmpeg
+
 WORKDIR /go/src/worker
 
 # Copy go.mod and go.sum files to the current directory

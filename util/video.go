@@ -32,6 +32,7 @@ func ProcessMsg(msg amqp.Delivery) {
 	// Use FFMPEG to Process Master File
 	_, err := os.Stat(dirPath + "/master.mp4")
 	if err == nil {
+		fmt.Println("Begin Resolution Generation")
 		ffmpegProcess(rabbitTask)
 	} else if os.IsNotExist(err) {
 		fmt.Println("File Doesn't Exist, skipping now")
@@ -108,7 +109,13 @@ func ffmpegProcess(rabbitTask types.RabbitTask) {
 		fmt.Println("There was an issue with determining the abs file path!", absErr)
 	}
 
-	videoProbe, _ := ffmpeg_go.Probe(absPath)
+	videoProbe, probeErr := ffmpeg_go.Probe(absPath)
+
+	if probeErr != nil {
+		fmt.Println("There was an issue probing the video", probeErr)
+		return
+	}
+
 	videoWidth := gjson.Get(videoProbe, "streams.0.width").Int()
 	videoHeight := gjson.Get(videoProbe, "streams.0.height").Int()
 
@@ -123,6 +130,7 @@ func ffmpegProcess(rabbitTask types.RabbitTask) {
 		scaleVideo("720", loadedVideo, dirPath)
 		scaleVideo("480", loadedVideo, dirPath)
 
+		fmt.Println("Done Processing!")
 		return
 	}
 
@@ -130,6 +138,7 @@ func ffmpegProcess(rabbitTask types.RabbitTask) {
 		scaleVideo("720", loadedVideo, dirPath)
 		scaleVideo("480", loadedVideo, dirPath)
 
+		fmt.Println("Done Processing!")
 		return
 	}
 }
