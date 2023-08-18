@@ -1,4 +1,4 @@
-package util
+package video
 
 import (
 	"encoding/base64"
@@ -8,15 +8,13 @@ import (
 	"path/filepath"
 
 	"video_worker/types"
+	"video_worker/util"
 
-	"github.com/mowshon/moviego"
 	amqp "github.com/rabbitmq/amqp091-go"
-	"github.com/tidwall/gjson"
-	ffmpeg_go "github.com/u2takey/ffmpeg-go"
 )
 
-func ProcessMsg(msg amqp.Delivery) {
-	rabbitTask := ParseMessage(msg)
+func ProcessMsg(msg amqp.Delivery) { // Possible Refactor with Template Method Pattern
+	rabbitTask := util.ParseMessage(msg)
 	dirPath := "./tmp/" + rabbitTask.Filename
 
 	// If Master File Exists, return early
@@ -40,15 +38,16 @@ func ProcessMsg(msg amqp.Delivery) {
 		fmt.Println("Error Checking File Existence: ", err)
 	}
 
-	// Store in DB
+	// Contact Webhook to Notify of Completion
+
 	// Tell User processing is done
 }
 
 func collectAndCreateMasterFile(rabbitTask types.RabbitTask) {
 	dirPath := "./tmp/" + rabbitTask.Filename
-	CreateDirectory(dirPath)
+	util.CreateDirectory(dirPath)
 
-	path := CreatePath(rabbitTask)
+	path := util.CreatePath(rabbitTask)
 	file, err := os.Create(path)
 	if err != nil {
 		fmt.Println("There was an Error creating the file!", err)
@@ -109,67 +108,20 @@ func ffmpegProcess(rabbitTask types.RabbitTask) {
 		fmt.Println("There was an issue with determining the abs file path!", absErr)
 	}
 
-	videoProbe, probeErr := ffmpeg_go.Probe(absPath)
-
-	if probeErr != nil {
-		fmt.Println("There was an issue probing the video", probeErr)
+	videoLoader, err := NewVideoLoader(absPath)
+	if err != nil {
+		fmt.Println("There was an issue creating the video loader!", err)
 		return
 	}
 
-	videoWidth := gjson.Get(videoProbe, "streams.0.width").Int()
-	videoHeight := gjson.Get(videoProbe, "streams.0.height").Int()
+	scaler := SelectStarterScaler(videoLoader.VideoWidth, videoLoader.VideoHeight)
 
-	// Prepare to load
-	loadedVideo, loadErr := moviego.Load(absPath)
-	if loadErr != nil {
-		fmt.Println("Had a problem loading the video!", loadErr)
-	}
+	scaler.handle(videoLoader.LoadedVideo, dirPath, videoLoader.VideoWidth, videoLoader.VideoHeight)
 
-	if videoWidth > 1920 && videoHeight > 1080 {
-		scaleVideo("1080", loadedVideo, dirPath)
-		scaleVideo("720", loadedVideo, dirPath)
-		scaleVideo("480", loadedVideo, dirPath)
-
-		fmt.Println("Done Processing!")
-		return
-	}
-
-	if videoWidth > 1280 && videoHeight > 720 {
-		scaleVideo("720", loadedVideo, dirPath)
-		scaleVideo("480", loadedVideo, dirPath)
-
-		fmt.Println("Done Processing!")
-		return
-	}
+	fmt.Println("Finished Processing Video!")
 }
 
 // Video Processing Util
-
-func scaleVideo(targetResolution string, loadedVideo moviego.Video, dirPath string) {
-	if targetResolution == "1080" {
-		absPath, absErr := filepath.Abs(dirPath + "/full-hd.mp4")
-		if absErr != nil {
-			fmt.Println("There was an issue with determining the abs file path for video Scaling!", absErr)
-		}
-		loadedVideo.Resize(1920, 1080).Output(absPath).Run()
-	}
-
-	if targetResolution == "720" {
-		absPath, absErr := filepath.Abs(dirPath + "/hd.mp4")
-		if absErr != nil {
-			fmt.Println("There was an issue with determining the abs file path for video Scaling!", absErr)
-		}
-		loadedVideo.Resize(1280, 720).Output(absPath).Run()
-	}
-
-	if targetResolution == "480" {
-		absPath, absErr := filepath.Abs(dirPath + "/sd.mp4")
-		if absErr != nil {
-			fmt.Println("There was an issue with determining the abs file path for video Scaling!", absErr)
-		}
-		loadedVideo.Resize(640, 480).Output(absPath).Run()
-	}
-}
 
 func createMasterFile(rabbitTask types.RabbitTask, files []fs.DirEntry, dirPath string) {
 	output, err := os.Create("./tmp/" + rabbitTask.Filename + "/master.mp4")

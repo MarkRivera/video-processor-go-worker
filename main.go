@@ -5,6 +5,7 @@ import (
 
 	"video_worker/rabbit"
 	"video_worker/util"
+	"video_worker/video"
 )
 
 func main() {
@@ -42,7 +43,7 @@ func main() {
 
 	go func() {
 		for d := range msgs {
-			util.ProcessMsg(d)
+			video.ProcessMsg(d)
 		}
 	}()
 
